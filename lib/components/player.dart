@@ -1,20 +1,22 @@
 import 'dart:async';
 
-import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
+import 'package:flame/collisions.dart';
 import 'package:flutter/services.dart';
 
 import '../pixel_adventure.dart';
 import 'collision_block.dart';
-import 'player_hitbox.dart';
+import 'custom_hitbox.dart';
+import 'fruit.dart';
+import 'saw.dart';
 import 'utils.dart';
 
-enum PlayerState { idle, running, jumping, falling }
+enum PlayerState { idle, running, jumping, falling, hit, appearing }
 
 // enum PlayerDirection { left, right, none }
 
 class Player extends SpriteAnimationGroupComponent
-    with HasGameRef<PixelAdventure>, KeyboardHandler {
+    with HasGameRef<PixelAdventure>, KeyboardHandler, CollisionCallbacks {
   String character;
 
   Player({position, this.character = 'Ninja Frog'}) : super(position: position);
@@ -24,19 +26,23 @@ class Player extends SpriteAnimationGroupComponent
   late final SpriteAnimation runningAnimation;
   late final SpriteAnimation jumpingAnimation;
   late final SpriteAnimation fallingAnimation;
+  late final SpriteAnimation hitAnimation;
+  late final SpriteAnimation appearingAnimation;
 
   final double _gravity = 9.8;
-  final double _jumpForce = 350;
+  final double _jumpForce = 250;
   final double _terminalVelocity = 300;
 
   // PlayerDirection playerDirection = PlayerDirection.none;
   double horizontalMovement = 0;
   double moveSpeed = 100;
+  Vector2 startingPosition = Vector2.zero();
   Vector2 velocity = Vector2.zero();
   bool isOnGround = false;
   bool hasJumped = false;
+  bool gotHit = false;
   List<CollisionBlock> collisionBlocks = [];
-  PlayerHitBox hitBox = PlayerHitBox(
+  CustomHitBox hitBox = CustomHitBox(
     offsetX: 10,
     offsetY: 4,
     width: 14,
@@ -49,6 +55,7 @@ class Player extends SpriteAnimationGroupComponent
   FutureOr<void> onLoad() {
     _loadAllAnimations();
     // debugMode = true;
+    startingPosition = Vector2(position.x, position.y);
     add(RectangleHitbox(
       position: Vector2(hitBox.offsetX, hitBox.offsetY),
       size: Vector2(hitBox.width, hitBox.height),
@@ -58,12 +65,14 @@ class Player extends SpriteAnimationGroupComponent
 
   @override
   void update(double dt) {
-    _updatePlayerState();
-    _updatePlayerMovement(dt);
-    _checkHorizontalCollisions();
-    _applyGravity(
-        dt); // this function must be called before _checkVerticalCollisions()
-    _checkVerticalCollisions();
+    if (!gotHit) {
+      _updatePlayerState();
+      _updatePlayerMovement(dt);
+      _checkHorizontalCollisions();
+      _applyGravity(
+          dt); // this function must be called before _checkVerticalCollisions()
+      _checkVerticalCollisions();
+    }
     super.update(dt);
   }
 
@@ -92,6 +101,13 @@ class Player extends SpriteAnimationGroupComponent
     return super.onKeyEvent(event, keysPressed);
   }
 
+  @override
+  void onCollision(Set<Vector2> intersectionPoints, PositionComponent other) {
+    if (other is Fruit) other.collidedWithPlayer();
+    if (other is Saw) _respawn();
+    super.onCollision(intersectionPoints, other);
+  }
+
   void _loadAllAnimations() {
     idleAnimation = _spriteAnimation('Idle', 11);
 
@@ -100,6 +116,8 @@ class Player extends SpriteAnimationGroupComponent
     jumpingAnimation = _spriteAnimation('Jump', 1);
 
     fallingAnimation = _spriteAnimation('Fall', 1);
+    hitAnimation = _spriteAnimation('Hit', 7);
+    appearingAnimation = _specialSpriteAnimation('Appearing', 7);
 
     // List of all animations
     animations = {
@@ -107,6 +125,8 @@ class Player extends SpriteAnimationGroupComponent
       PlayerState.running: runningAnimation,
       PlayerState.jumping: jumpingAnimation,
       PlayerState.falling: fallingAnimation,
+      PlayerState.hit: hitAnimation,
+      PlayerState.appearing: appearingAnimation,
     };
 
     // Set current animation
@@ -230,6 +250,29 @@ class Player extends SpriteAnimationGroupComponent
     }
   }
 
+  void _respawn() {
+    // hitDuration = playerAnimationTime * hitAnimationFrames
+    const hitDuration = Duration(milliseconds: 50 * 7);
+    const appearingDuration = Duration(milliseconds: 50 * 7);
+    const canMoveDuration = Duration(milliseconds: 400);
+    gotHit = true;
+    current = PlayerState.hit;
+    Future.delayed(hitDuration, () {
+      scale.x = 1; // always switch face of the character to the right
+
+      // since the appearing and character animation are not at the same position
+      // so, offset = appearing dimension - character dimension
+      position = startingPosition - Vector2.all(96 - 64);
+      current = PlayerState.appearing;
+      Future.delayed(appearingDuration, () {
+        velocity = Vector2.zero();
+        position = startingPosition;
+        _updatePlayerState();
+        Future.delayed(canMoveDuration, () => gotHit = false);
+      });
+    });
+  }
+
   SpriteAnimation _spriteAnimation(String state, int amount) {
     return SpriteAnimation.fromFrameData(
         game.images.fromCache('Main Characters/$character/$state (32x32).png'),
@@ -237,6 +280,16 @@ class Player extends SpriteAnimationGroupComponent
           amount: amount,
           stepTime: stepTime,
           textureSize: Vector2.all(32),
+        ));
+  }
+
+  SpriteAnimation _specialSpriteAnimation(String state, int amount) {
+    return SpriteAnimation.fromFrameData(
+        game.images.fromCache('Main Characters/$state (96x96).png'),
+        SpriteAnimationData.sequenced(
+          amount: amount,
+          stepTime: stepTime,
+          textureSize: Vector2.all(96),
         ));
   }
 }
