@@ -1,13 +1,13 @@
 import 'dart:async';
 
-import 'package:flame/components.dart';
-import 'package:flame/events.dart';
 import 'package:flame/game.dart';
+import 'package:flame/events.dart';
+import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
-import 'components/jump_button.dart';
-import 'components/player.dart';
 import 'components/level.dart';
+import 'components/player.dart';
+import 'components/jump_button.dart';
 
 class PixelAdventure extends FlameGame
     with
@@ -20,7 +20,9 @@ class PixelAdventure extends FlameGame
 
   late CameraComponent cam;
   late JoystickComponent joystick;
-  bool showControls = false;
+  bool showControls = true;
+  bool playSounds = true;
+  double soundVolume = 1.0;
   Player player = Player(character: 'Pink Man');
   List<String> levelNames = ['Level-01', 'Level-01'];
   int currentLevelIndex = 0;
@@ -97,6 +99,8 @@ class PixelAdventure extends FlameGame
       _loadLevel();
     } else {
       // no more levels
+      currentLevelIndex = 0;
+      _loadLevel();
     }
   }
 
